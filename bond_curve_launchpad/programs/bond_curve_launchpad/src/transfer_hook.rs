@@ -1,5 +1,3 @@
-// transfer_hook.rs - Comprehensive implementation of Token-2022 transfer hook
-
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{
     program::{invoke, invoke_signed},
@@ -11,7 +9,8 @@ use spl_token_2022::{
 };
 use spl_transfer_hook_interface::instruction::{ExecuteInstruction, TransferHookInstruction};
 
-use crate::bundle_detection::{is_wallet_bundling, BundleTracker};
+use crate::bundle_detection;
+use crate::BundleTracker;
 
 /// Initialize the transfer hook extension on a token mint
 pub fn initialize_transfer_hook(
@@ -125,20 +124,28 @@ fn process_execute_instruction(
     
     // Check for bundling if we have the necessary accounts
     if let (Some(bundle_tracker), Some(config)) = (bundle_tracker_info, config_info) {
-        let bundle_tracker_data = bundle_tracker.try_borrow_data()?;
-        let config_data = config.try_borrow_data()?;
-        
-        // In a real implementation, you would deserialize these accounts
-        // and check if the wallet is part of a bundle
-        
-        // For demonstration, we'll just check if the bundle_tracker has is_bundling = true
-        // This would be replaced with actual logic in a real implementation
-        let is_bundling = false; // Placeholder
-        
-        if is_bundling {
-            // If bundling is detected, apply 100% tax by preventing the transfer
-            msg!("Bundling detected. Transfer not allowed.");
-            return Err(error!(ErrorCode::BundlingDetected));
+        // Try to deserialize the bundle tracker account
+        if bundle_tracker.owner == program_id {
+            let bundle_tracker_data = bundle_tracker.try_borrow_data()?;
+            if !bundle_tracker_data.is_empty() {
+                // Deserialize the bundle tracker account
+                let bundle_tracker_account = Account::<BundleTracker>::try_from(bundle_tracker)?;
+                
+                // Check if the source wallet is part of a bundle
+                let is_bundling = bundle_tracker_account.is_bundling;
+                
+                if is_bundling {
+                    // If bundling is detected, apply 100% tax by preventing the transfer
+                    msg!("Bundling detected. Applying 100% tax.");
+                    
+                    // In a real implementation, we would:
+                    // 1. Cancel the current transfer
+                    // 2. Initiate a new transfer to burn the tokens or send to a fee account
+                    
+                    // For now, we'll just prevent the transfer
+                    return Err(error!(ErrorCode::BundlingDetected));
+                }
+            }
         }
     }
     
@@ -152,15 +159,15 @@ fn process_execute_instruction(
             .ok_or(error!(ErrorCode::DivisionByZero))?;
         
         if fee_amount > 0 {
-            // In a real implementation, we would:
-            // 1. Redirect fee_amount tokens to the fee vault
-            // 2. Reduce the amount being transferred
-            
-            // For now, we'll just log the fee
+            // Log the fee
             msg!("External transfer detected. Applying 2% fee: {}", fee_amount);
             
-            // Note: In a real implementation, you would need to modify the token accounts
+            // In a real implementation, we would:
+            // 1. Modify the transfer amount to subtract the fee
+            // 2. Initiate a separate transfer for the fee to the fee vault
+            
             // This would require additional CPI calls to the token program
+            // For now, we'll just log the fee
         }
     }
     
@@ -171,33 +178,13 @@ fn process_execute_instruction(
 /// Check if a transfer is originating from our launchpad
 fn is_from_launchpad(project_info: Option<&AccountInfo>, source_info: &AccountInfo) -> bool {
     if let Some(project) = project_info {
-        // In a real implementation, you would check if the source account
-        // is owned by our launchpad or is part of a launchpad transaction
-        
-        // For simplicity, we'll just check if the project account is provided
-        // and matches the expected pattern
-        
-        // Check if the project account has the expected owner (our program)
-        // and if it's a PDA derived from the expected seeds
-        
-        // This is a simplified check - in a real implementation you would
-        // verify the PDA derivation and account ownership
-        return true;
+        // Check if the project account is owned by our program
+        if project.owner == &crate::ID {
+            // In a real implementation, you would check if the source account
+            // is owned by our launchpad or is part of a launchpad transaction
+            return true;
+        }
     }
     
     false
-}
-
-#[error_code]
-pub enum ErrorCode {
-    #[msg("Unsupported instruction")]
-    UnsupportedInstruction,
-    #[msg("Incorrect transfer hook program")]
-    IncorrectTransferHookProgram,
-    #[msg("Math overflow")]
-    MathOverflow,
-    #[msg("Division by zero")]
-    DivisionByZero,
-    #[msg("Bundling detected, transfer not allowed")]
-    BundlingDetected,
 }

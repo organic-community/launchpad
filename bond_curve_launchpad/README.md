@@ -1,171 +1,132 @@
-# Bond Curve Launchpad with Anti-Bundling Mechanism
+# Bond Curve Launchpad
 
-A Solana-based token launchpad with exponential bond curve pricing and an anti-bundling mechanism using Token-2022 transfer hooks.
+A Solana-based token launchpad with a bond curve pricing mechanism and anti-bundling features.
 
 ## Features
 
-- **SOL-based Launchpad**: Users can buy and sell tokens using native SOL (with automatic WSOL wrapping/unwrapping)
-- **Exponential Bond Curve Pricing**: Configurable exponential curve for predictable token pricing
-- **Token-2022 Integration**: Uses transfer hooks to implement anti-bundling mechanisms and external swap fees
-- **Fee Structure**:
-  - **1% Trading Fee** on the launchpad (0.5% to creator, 0.5% to platform)
-  - **2% External Swap Fee** for trades outside the launchpad
-  - **Anti-Bundling Mechanism**: 100% tax on transfers from wallets collectively holding >5% of a token
-- **Graduation Process**: Tokens graduate to Raydium liquidity pools at $100k market cap
-
-## Project Structure
-
-- `/programs/bond_curve_launchpad`: Solana program (smart contract) written in Rust
-- `/app`: Frontend application written in React/TypeScript
-
-## Smart Contract Components
-
-1. **LaunchpadConfig**: Global configuration for the launchpad
-2. **TokenProject**: Information about each token project
-3. **BondCurve**: Parameters for the exponential bond curve
-4. **BundleTracker**: Track wallet relationships and bundling status
-5. **TransferHook**: Implement the Token-2022 transfer hook for fees and anti-bundling
-6. **FeeVault**: PDA to collect platform fees
-
-## How It Works
-
-### Bond Curve Mechanism
-
-The launchpad uses an exponential bond curve to determine token prices. As more tokens are bought, the price increases according to the formula:
-
-`price = initial_price * base^(current_supply)`
-
-Where:
-- `initial_price` is the starting price of the token
-- `base` is the growth factor (in basis points, 10000 = 1.0)
-- `current_supply` is the current token supply
-
-### Fee Structure
-
-The launchpad implements a dual fee structure:
-
-1. **Launchpad Trading Fees (1%)**:
-   - 0.5% goes to the token creator
-   - 0.5% goes to the platform fee vault
-
-2. **External Swap Fees (2%)**:
-   - Applied to all transfers outside the launchpad
-   - Implemented via Token-2022 transfer hook
-   - Encourages trading on the launchpad
+### Core Functionality
+- **Bond Curve Pricing**: Tokens are priced according to an exponential bond curve, where price increases as supply increases.
+- **SOL-Based Trading**: Buy and sell tokens using SOL, with automatic WSOL wrapping/unwrapping.
+- **Token-2022 Integration**: All tokens are created using the Token-2022 program with transfer hooks.
+- **Graduation Process**: Tokens graduate to Raydium liquidity pools when they reach $100k market cap.
 
 ### Anti-Bundling Mechanism
+- **Bundle Detection**: Identifies wallets that are connected to one another and collectively hold a high percentage of tokens.
+- **Relationship Tracking**: Tracks wallet relationships based on transaction history.
+- **100% Tax**: Applies a 100% tax on transfers from bundling wallets (those exceeding 5% threshold).
+- **Automatic Monitoring**: Continuously monitors wallet balances and relationships.
 
-The anti-bundling mechanism works as follows:
+### Fee Structure
+- **1% Trading Fee**: Applied on all trades within the launchpad (0.5% to creator, 0.5% to platform).
+- **2% External Transfer Fee**: Applied on transfers outside the launchpad.
 
-1. The launchpad tracks relationships between wallets (e.g., wallets that have sent funds to each other)
-2. When wallets are identified as part of a "bundle" (related wallets collectively holding >5% of a token)
-3. The Token-2022 transfer hook applies a 100% tax on transfers from these wallets
-4. The tax is lifted once the bundle's holdings drop below the 5% threshold
+## Technical Architecture
 
-### Graduation Process
+### Smart Contract Components
+- **Bond Curve**: Implements exponential pricing for token buying and selling.
+- **Bundle Detection**: Tracks wallet relationships and detects bundling.
+- **Transfer Hook**: Implements Token-2022 transfer hook for fee collection and anti-bundling enforcement.
+- **WSOL Handling**: Manages wrapping and unwrapping of SOL to WSOL.
+- **Graduation**: Handles token graduation to Raydium liquidity pools.
 
-Tokens graduate from the launchpad to Raydium liquidity pools when they reach a market cap of $100k. The graduation process:
+### Frontend Components
+- **React UI**: User interface for interacting with the launchpad.
+- **Client Library**: TypeScript library for communicating with the smart contract.
 
-1. Creates a liquidity pool on Raydium
-2. Transfers tokens and SOL to the pool
-3. Initializes the pool
-
-## Setup and Installation
+## Getting Started
 
 ### Prerequisites
-
-- Rust and Cargo
-- Solana CLI
-- Node.js and npm/yarn
+- Node.js v14+
+- Rust and Solana CLI
 - Anchor Framework
 
-### Building the Program
+### Installation
 
+1. Clone the repository:
 ```bash
-# Clone the repository
 git clone https://github.com/yourusername/bond-curve-launchpad.git
 cd bond-curve-launchpad
-
-# Build the program
-anchor build
-
-# Deploy to devnet
-anchor deploy --provider.cluster devnet
 ```
 
-### Running the Frontend
-
+2. Install dependencies:
 ```bash
-# Navigate to the app directory
-cd app
+# Install Rust dependencies
+cd programs/bond_curve_launchpad
+cargo build
 
-# Install dependencies
+# Install JavaScript dependencies
+cd ../../app
 npm install
+```
 
-# Start the development server
+3. Build the program:
+```bash
+anchor build
+```
+
+4. Deploy the program:
+```bash
+anchor deploy
+```
+
+5. Start the frontend:
+```bash
+cd app
 npm start
 ```
 
 ## Usage
 
 ### Creating a Token
-
 1. Connect your wallet
-2. Fill in the token details:
-   - Name
-   - Symbol
-   - Initial Price
-   - Curve Parameters (base, initial_price)
+2. Fill in the token details (name, symbol, initial price, curve parameters)
 3. Click "Create Token"
 
 ### Buying Tokens
-
 1. Select a token from the dropdown
 2. Enter the amount to buy
 3. Click "Buy Tokens"
 
 ### Selling Tokens
-
 1. Select a token from the dropdown
 2. Enter the amount to sell
 3. Click "Sell Tokens"
 
-### Admin Functions
+### Graduating a Token (Admin Only)
+1. Wait until a token reaches the graduation threshold ($100k market cap)
+2. Click "Graduate to Raydium" in the admin panel
 
-1. Withdraw platform fees to a specified recipient
+## Anti-Bundling Mechanism
 
-## Technical Details
+The anti-bundling mechanism works as follows:
 
-### Exponential Bond Curve Calculation
+1. **Relationship Detection**: The system tracks transactions between wallets to establish relationships.
+2. **Bundle Calculation**: For each wallet, the system calculates the total token balance held by all related wallets.
+3. **Threshold Enforcement**: If a bundle exceeds 5% of the total token supply, all wallets in the bundle are marked as "bundling".
+4. **Transfer Tax**: Transfers from bundling wallets are subject to a 100% tax, effectively preventing them from transferring tokens.
+5. **Unbundling**: To remove the bundling status, wallets must reduce their collective holdings below the 5% threshold.
 
-For buying:
+## Bond Curve Implementation
+
+The bond curve is implemented as an exponential function:
+
 ```
-Total cost = average price * amount
-where average price = (price at current supply + price at current supply + amount) / 2
+price = initial_price * (base/10000)^supply
 ```
 
-For selling:
-```
-Total return = average price * amount
-where average price = (price at current supply - amount + price at current supply) / 2
-```
+Where:
+- `initial_price` is the starting price of the token
+- `base` is the rate of price increase (in basis points, 10000 = 1.0)
+- `supply` is the current token supply
 
-### Token-2022 Transfer Hook
+For example, with a base of 10100 (1.01x), each token minted increases the price by 1%.
 
-The transfer hook intercepts token transfers and:
+## Token-2022 Transfer Hook
 
-1. Checks if the transfer is from the launchpad
-2. If not, applies a 2% fee
-3. Checks if the sender is part of a bundle exceeding the threshold
-4. If yes, applies a 100% tax (redirects tokens to buy and burn)
-5. If no, allows the transfer to proceed normally
+The transfer hook is used to:
 
-## Security Considerations
-
-- **Reentrancy Protection**: The program uses Anchor's reentrancy protection
-- **Overflow/Underflow Protection**: All mathematical operations use checked arithmetic
-- **Access Control**: Only authorized accounts can perform sensitive operations
-- **Signer Verification**: All transactions require appropriate signers
+1. Detect and prevent transfers from bundling wallets
+2. Apply a 2% fee on external transfers (outside the launchpad)
 
 ## License
 

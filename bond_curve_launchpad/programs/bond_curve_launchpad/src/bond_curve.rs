@@ -1,5 +1,3 @@
-// bond_curve.rs - Improved exponential curve implementation
-
 use anchor_lang::prelude::*;
 
 /// Calculate the price to buy a specific amount of tokens based on the current supply
@@ -142,13 +140,13 @@ pub fn calculate_price_at_supply(initial_price: u64, base: u64, supply: u64) -> 
                 result = result.checked_mul(base_power)
                     .ok_or(error!(ErrorCode::MathOverflow))?
                     .checked_div(10000)
-                    .ok_or(error!(ErrorCode::MathOverflow))?;
+                    .ok_or(error!(ErrorCode::DivisionByZero))?;
             }
             
             base_power = base_power.checked_mul(base_power)
                 .ok_or(error!(ErrorCode::MathOverflow))?
                 .checked_div(10000)
-                .ok_or(error!(ErrorCode::MathOverflow))?;
+                .ok_or(error!(ErrorCode::DivisionByZero))?;
                 
             exp >>= 1;
         }
@@ -162,7 +160,7 @@ pub fn calculate_price_at_supply(initial_price: u64, base: u64, supply: u64) -> 
         result = result.checked_mul(base)
             .ok_or(error!(ErrorCode::MathOverflow))?
             .checked_div(10000)
-            .ok_or(error!(ErrorCode::MathOverflow))?;
+            .ok_or(error!(ErrorCode::DivisionByZero))?;
     }
     
     Ok(result)
@@ -174,13 +172,12 @@ pub fn calculate_market_cap(supply: u64, price: u64) -> Result<u64> {
         .ok_or(error!(ErrorCode::MathOverflow))
 }
 
-// Error codes
-#[error_code]
-pub enum ErrorCode {
-    #[msg("Math overflow")]
-    MathOverflow,
-    #[msg("Invalid curve parameters")]
-    InvalidCurveParams,
-    #[msg("Insufficient supply")]
-    InsufficientSupply,
+/// Check if a token is eligible for graduation
+pub fn is_eligible_for_graduation(
+    supply: u64,
+    current_price: u64,
+    graduation_market_cap: u64
+) -> Result<bool> {
+    let market_cap = calculate_market_cap(supply, current_price)?;
+    Ok(market_cap >= graduation_market_cap)
 }

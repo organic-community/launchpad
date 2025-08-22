@@ -1,0 +1,318 @@
+types:
+  LaunchpadConfig:
+    fields:
+      - name: authority
+        type: sol:pubkey
+        description: The authority that can perform admin actions
+      - name: fee_recipient
+        type: sol:pubkey
+        description: The recipient of platform fees
+      - name: bundle_threshold_percentage
+        type: u16
+        description: The threshold percentage for bundling detection (in basis points, 500 = 5%)
+      - name: graduation_market_cap
+        type: u64
+        description: The market cap threshold for graduation (in lamports)
+      - name: trading_fee_bps
+        type: u16
+        description: Trading fee in basis points (100 = 1%)
+      - name: relationship_threshold
+        type: u16
+        description: Threshold for considering wallets related (in basis points)
+
+  TokenProject:
+    fields:
+      - name: mint
+        type: sol:pubkey
+        description: The mint address of the token
+      - name: creator
+        type: sol:pubkey
+        description: The creator of the token project
+      - name: name
+        type: string
+        attributes: [cap=32]
+        description: The name of the token
+      - name: symbol
+        type: string
+        attributes: [cap=10]
+        description: The symbol of the token
+      - name: initial_price
+        type: u64
+        description: The initial price of the token in lamports
+      - name: current_price
+        type: u64
+        description: The current price of the token in lamports
+      - name: supply
+        type: u64
+        description: The current supply of the token
+      - name: reserve_balance
+        type: u64
+        description: The reserve balance in lamports
+      - name: curve_params
+        type: array<u64>
+        attributes: [cap=4]
+        description: Parameters for the bond curve (base, initial_price, etc.)
+      - name: is_graduated
+        type: bool
+        description: Whether the token has graduated to a liquidity pool
+      - name: liquidity_pool
+        type: sol:pubkey?
+        description: The address of the liquidity pool (if graduated)
+      - name: creator_fee_earned
+        type: u64
+        description: Total creator fees earned in lamports
+      - name: platform_fee_earned
+        type: u64
+        description: Total platform fees earned in lamports
+
+  BundleTracker:
+    fields:
+      - name: mint
+        type: sol:pubkey
+        description: The mint address of the token
+      - name: wallet
+        type: sol:pubkey
+        description: The wallet being tracked
+      - name: related_wallets
+        type: array<sol:pubkey>
+        attributes: [cap=20]
+        description: List of wallets related to this wallet
+      - name: total_bundle_balance
+        type: u64
+        description: Total token balance held by this bundle
+      - name: is_bundling
+        type: bool
+        description: Whether this bundle exceeds the threshold
+      - name: last_updated
+        type: i64
+        description: Timestamp of the last update
+
+  WalletRelationship:
+    fields:
+      - name: mint
+        type: sol:pubkey
+        description: The mint address of the token
+      - name: wallet_a
+        type: sol:pubkey
+        description: First wallet in the relationship
+      - name: wallet_b
+        type: sol:pubkey
+        description: Second wallet in the relationship
+      - name: relationship_strength
+        type: u16
+        description: Strength of the relationship in basis points
+      - name: last_transaction
+        type: i64
+        description: Timestamp of the last transaction
+      - name: transaction_count
+        type: u16
+        description: Number of transactions between the wallets
+
+solana:
+  seeds:
+    Config:
+      items:
+        - name: "config"
+    FeeVault:
+      items:
+        - name: "fee_vault"
+    Project:
+      items:
+        - name: "project"
+        - name: mint
+          type: sol:pubkey
+    Bundle:
+      items:
+        - name: "bundle"
+        - name: mint
+          type: sol:pubkey
+        - name: wallet
+          type: sol:pubkey
+    Relationship:
+      items:
+        - name: "relationship"
+        - name: mint
+          type: sol:pubkey
+        - name: wallet_a
+          type: sol:pubkey
+        - name: wallet_b
+          type: sol:pubkey
+
+methods:
+  - name: initialize_launchpad
+    inputs:
+      - name: config
+        type: sol:account<LaunchpadConfig, seeds.Config>
+        attributes: [sol:init, sol:writable]
+      - name: fee_vault
+        type: sol:account<_, seeds.FeeVault>
+        attributes: [sol:init, sol:writable]
+      - name: fee_recipient
+        type: sol:pubkey
+      - name: bundle_threshold_percentage
+        type: u16
+      - name: graduation_market_cap
+        type: u64
+
+  - name: create_token_project
+    inputs:
+      - name: config
+        type: sol:account<LaunchpadConfig, seeds.Config>
+      - name: project
+        type: sol:account<TokenProject, seeds.Project(mint=mint)>
+        attributes: [sol:init, sol:writable]
+      - name: mint
+        type: sol:account
+        attributes: [sol:writable]
+      - name: name
+        type: string
+      - name: symbol
+        type: string
+      - name: initial_price
+        type: u64
+      - name: curve_params
+        type: array<u64>
+
+  - name: buy_tokens
+    inputs:
+      - name: config
+        type: sol:account<LaunchpadConfig, seeds.Config>
+      - name: project
+        type: sol:account<TokenProject, seeds.Project(mint=mint)>
+        attributes: [sol:writable]
+      - name: mint
+        type: sol:account
+      - name: buyer
+        type: sol:account
+        attributes: [sol:writable]
+      - name: buyer_token_account
+        type: sol:account
+        attributes: [sol:writable]
+      - name: fee_vault
+        type: sol:account<_, seeds.FeeVault>
+        attributes: [sol:writable]
+      - name: bundle_tracker
+        type: sol:account<BundleTracker, seeds.Bundle(mint=mint, wallet=buyer)>
+        attributes: [sol:init_if_needed, sol:writable]
+      - name: amount
+        type: u64
+
+  - name: sell_tokens
+    inputs:
+      - name: config
+        type: sol:account<LaunchpadConfig, seeds.Config>
+      - name: project
+        type: sol:account<TokenProject, seeds.Project(mint=mint)>
+        attributes: [sol:writable]
+      - name: mint
+        type: sol:account
+      - name: seller
+        type: sol:account
+        attributes: [sol:writable]
+      - name: seller_token_account
+        type: sol:account
+        attributes: [sol:writable]
+      - name: fee_vault
+        type: sol:account<_, seeds.FeeVault>
+        attributes: [sol:writable]
+      - name: bundle_tracker
+        type: sol:account<BundleTracker, seeds.Bundle(mint=mint, wallet=seller)>
+        attributes: [sol:init_if_needed, sol:writable]
+      - name: amount
+        type: u64
+
+  - name: register_wallet_relationship
+    inputs:
+      - name: config
+        type: sol:account<LaunchpadConfig, seeds.Config>
+      - name: relationship
+        type: sol:account<WalletRelationship, seeds.Relationship(mint=mint, wallet_a=wallet_a, wallet_b=wallet_b)>
+        attributes: [sol:init, sol:writable]
+      - name: mint
+        type: sol:pubkey
+      - name: wallet_a
+        type: sol:pubkey
+      - name: wallet_b
+        type: sol:pubkey
+      - name: relationship_strength
+        type: u16
+      - name: transaction_count
+        type: u16
+
+  - name: update_bundle_status
+    inputs:
+      - name: config
+        type: sol:account<LaunchpadConfig, seeds.Config>
+      - name: project
+        type: sol:account<TokenProject, seeds.Project(mint=mint)>
+      - name: bundle_tracker
+        type: sol:account<BundleTracker, seeds.Bundle(mint=mint, wallet=wallet)>
+        attributes: [sol:init_if_needed, sol:writable]
+      - name: mint
+        type: sol:pubkey
+      - name: wallet
+        type: sol:pubkey
+      - name: related_wallets
+        type: array<sol:pubkey>
+      - name: total_bundle_balance
+        type: u64
+
+  - name: graduate_token
+    inputs:
+      - name: config
+        type: sol:account<LaunchpadConfig, seeds.Config>
+      - name: project
+        type: sol:account<TokenProject, seeds.Project(mint=mint)>
+        attributes: [sol:writable]
+      - name: mint
+        type: sol:pubkey
+      - name: liquidity_pool
+        type: sol:pubkey
+
+  - name: create_raydium_pool
+    inputs:
+      - name: config
+        type: sol:account<LaunchpadConfig, seeds.Config>
+      - name: project
+        type: sol:account<TokenProject, seeds.Project(mint=mint)>
+        attributes: [sol:writable]
+      - name: mint
+        type: sol:account
+      - name: liquidity_pool
+        type: sol:account
+        attributes: [sol:writable]
+      - name: initial_liquidity_amount
+        type: u64
+      - name: initial_token_amount
+        type: u64
+
+  - name: withdraw_platform_fees
+    inputs:
+      - name: config
+        type: sol:account<LaunchpadConfig, seeds.Config>
+      - name: fee_vault
+        type: sol:account<_, seeds.FeeVault>
+        attributes: [sol:writable]
+      - name: recipient
+        type: sol:account
+        attributes: [sol:writable]
+      - name: amount
+        type: u64
+
+errors:
+  - id: MathOverflow
+    msg: Math overflow
+  - id: InsufficientFunds
+    msg: Insufficient funds
+  - id: InsufficientSupply
+    msg: Insufficient supply
+  - id: UnauthorizedAccess
+    msg: Unauthorized access
+  - id: TokenNotEligibleForGraduation
+    msg: Token not eligible for graduation
+  - id: InvalidCurveParams
+    msg: Invalid curve parameters
+  - id: DivisionByZero
+    msg: Division by zero
+  - id: BundlingDetected
+    msg: Bundling detected

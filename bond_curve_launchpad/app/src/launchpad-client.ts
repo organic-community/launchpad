@@ -135,7 +135,7 @@ export class LaunchpadClient {
         config: configPDA,
         project: projectPDA,
         mint: mintKeypair.publicKey,
-        creator: this.wallet.publicKey,
+        authority: this.wallet.publicKey,
         tokenProgram: TOKEN_2022_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
         rent: SYSVAR_RENT_PUBKEY,
@@ -156,6 +156,7 @@ export class LaunchpadClient {
     const [configPDA] = await this.findConfigPDA();
     const [projectPDA] = await this.findProjectPDA(mint);
     const [feeVaultPDA] = await this.findFeeVaultPDA();
+    const [bundleTrackerPDA] = await this.findBundleTrackerPDA(mint, this.wallet.publicKey);
 
     // Get the associated token account for the buyer
     const buyerATA = await getAssociatedTokenAddress(
@@ -191,8 +192,12 @@ export class LaunchpadClient {
           project: projectPDA,
           mint: mint,
           buyer: this.wallet.publicKey,
+          buyerTokenAccount: buyerATA,
           feeVault: feeVaultPDA,
+          bundleTracker: bundleTrackerPDA,
           systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_2022_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         })
         .instruction()
     );
@@ -215,6 +220,7 @@ export class LaunchpadClient {
     const [configPDA] = await this.findConfigPDA();
     const [projectPDA] = await this.findProjectPDA(mint);
     const [feeVaultPDA] = await this.findFeeVaultPDA();
+    const [bundleTrackerPDA] = await this.findBundleTrackerPDA(mint, this.wallet.publicKey);
 
     // Get the associated token account for the seller
     const sellerATA = await getAssociatedTokenAddress(
@@ -232,8 +238,12 @@ export class LaunchpadClient {
         project: projectPDA,
         mint: mint,
         seller: this.wallet.publicKey,
+        sellerTokenAccount: sellerATA,
         feeVault: feeVaultPDA,
+        bundleTracker: bundleTrackerPDA,
         systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       })
       .rpc();
 
@@ -244,7 +254,8 @@ export class LaunchpadClient {
     mint: PublicKey,
     walletA: PublicKey,
     walletB: PublicKey,
-    relationshipStrength: number
+    relationshipStrength: number,
+    transactionCount: number
   ): Promise<string> {
     const [configPDA] = await this.findConfigPDA();
     const [relationshipPDA] = await this.findWalletRelationshipPDA(
@@ -258,11 +269,15 @@ export class LaunchpadClient {
         mint,
         walletA,
         walletB,
-        relationshipStrength
+        relationshipStrength,
+        transactionCount
       )
       .accounts({
         config: configPDA,
         relationship: relationshipPDA,
+        mint: mint,
+        walletA: walletA,
+        walletB: walletB,
         authority: this.wallet.publicKey,
         systemProgram: SystemProgram.programId,
       })
@@ -278,6 +293,7 @@ export class LaunchpadClient {
     totalBundleBalance: anchor.BN
   ): Promise<string> {
     const [configPDA] = await this.findConfigPDA();
+    const [projectPDA] = await this.findProjectPDA(mint);
     const [bundleTrackerPDA] = await this.findBundleTrackerPDA(mint, wallet);
 
     const tx = await this.program.methods
@@ -289,7 +305,10 @@ export class LaunchpadClient {
       )
       .accounts({
         config: configPDA,
+        project: projectPDA,
         bundleTracker: bundleTrackerPDA,
+        mint: mint,
+        wallet: wallet,
         authority: this.wallet.publicKey,
         systemProgram: SystemProgram.programId,
       })
@@ -313,9 +332,42 @@ export class LaunchpadClient {
       .accounts({
         config: configPDA,
         project: projectPDA,
+        mint: mint,
+        liquidityPool: liquidityPool,
         authority: this.wallet.publicKey,
         systemProgram: SystemProgram.programId,
       })
+      .rpc();
+
+    return tx;
+  }
+
+  async createRaydiumPool(
+    mint: PublicKey,
+    initialLiquidityAmount: anchor.BN,
+    initialTokenAmount: anchor.BN
+  ): Promise<string> {
+    const [configPDA] = await this.findConfigPDA();
+    const [projectPDA] = await this.findProjectPDA(mint);
+    const liquidityPoolKeypair = Keypair.generate();
+
+    const tx = await this.program.methods
+      .createRaydiumPool(
+        mint,
+        initialLiquidityAmount,
+        initialTokenAmount
+      )
+      .accounts({
+        config: configPDA,
+        project: projectPDA,
+        mint: mint,
+        authority: this.wallet.publicKey,
+        liquidityPool: liquidityPoolKeypair.publicKey,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+        rent: SYSVAR_RENT_PUBKEY,
+      })
+      .signers([liquidityPoolKeypair])
       .rpc();
 
     return tx;
@@ -340,6 +392,38 @@ export class LaunchpadClient {
       .rpc();
 
     return tx;
+  }
+
+  // Helper method to check if a wallet is bundling
+  async checkBundlingStatus(
+    mint: PublicKey,
+    wallet: PublicKey
+  ): Promise<boolean> {
+    const [bundleTrackerPDA] = await this.findBundleTrackerPDA(mint, wallet);
+    
+    try {
+      const bundleTracker = await this.program.account.bundleTracker.fetch(bundleTrackerPDA);
+      return bundleTracker.isBundling;
+    } catch (error) {
+      // If the account doesn't exist, the wallet is not bundling
+      return false;
+    }
+  }
+
+  // Helper method to get all related wallets for a given wallet
+  async getRelatedWallets(
+    mint: PublicKey,
+    wallet: PublicKey
+  ): Promise<PublicKey[]> {
+    const [bundleTrackerPDA] = await this.findBundleTrackerPDA(mint, wallet);
+    
+    try {
+      const bundleTracker = await this.program.account.bundleTracker.fetch(bundleTrackerPDA);
+      return bundleTracker.relatedWallets;
+    } catch (error) {
+      // If the account doesn't exist, there are no related wallets
+      return [];
+    }
   }
 
   // Helper method for bond curve calculations
@@ -391,5 +475,45 @@ export class LaunchpadClient {
     
     const avgPrice = startPrice.add(endPrice).div(new anchor.BN(2));
     return avgPrice.mul(amount);
+  }
+
+  // Helper method to calculate market cap
+  calculateMarketCap(
+    supply: anchor.BN,
+    currentPrice: anchor.BN
+  ): anchor.BN {
+    return supply.mul(currentPrice);
+  }
+
+  // Helper method to check if a token is eligible for graduation
+  async isEligibleForGraduation(
+    mint: PublicKey
+  ): Promise<boolean> {
+    const [configPDA] = await this.findConfigPDA();
+    const [projectPDA] = await this.findProjectPDA(mint);
+    
+    try {
+      const config = await this.program.account.launchpadConfig.fetch(configPDA);
+      const project = await this.program.account.tokenProject.fetch(projectPDA);
+      
+      const marketCap = new anchor.BN(project.supply).mul(new anchor.BN(project.currentPrice));
+      return marketCap.gte(new anchor.BN(config.graduationMarketCap));
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // Helper method to get all token projects
+  async getAllTokenProjects(): Promise<any[]> {
+    const projects = await this.program.account.tokenProject.all();
+    return projects.map(project => ({
+      mint: project.account.mint,
+      name: project.account.name,
+      symbol: project.account.symbol,
+      currentPrice: project.account.currentPrice,
+      supply: project.account.supply,
+      isGraduated: project.account.isGraduated,
+      liquidityPool: project.account.liquidityPool,
+    }));
   }
 }
